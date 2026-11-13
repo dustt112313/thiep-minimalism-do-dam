@@ -56,7 +56,7 @@ TƯ&nbsp;GIA</span></div><div class="flex w-full max-w-[180px] md:max-w-[210px] 
    · date "YYYY-MM-DD", giờ "HH:MM" (giờ Việt Nam). Thứ trong tuần, lịch tháng, link "Thêm vào lịch" tự tính theo date.
    · lunar: ngày âm lịch ghi tay (trang không tự tính âm lịch).
    · venue.lat / venue.lng: toạ độ ghim trên bản đồ (Google Maps: bấm chuột phải vào điểm cần ghim → dòng đầu là toạ độ).
-     Dùng cho cả bản đồ OpenStreetMap lẫn bản đồ Google Maps dự phòng.
+     Bản đồ Google Maps trong khung ghim đúng toạ độ này.
    · venue.directionsTo (không bắt buộc): nơi nút "Chỉ đường" dẫn tới — chữ địa chỉ hoặc "lat,lng". Bỏ trống thì dùng address.
    · Xuống dòng trong chữ: \n · Khoảng trắng không cho ngắt dòng:
 
@@ -77,11 +77,12 @@ window.CARD_RSVP_LINK = "./";
 // Để trống "" thì xác nhận chỉ lưu trên máy của khách (localStorage), gia đình KHÔNG nhận được.
 window.CARD_RSVP_ENDPOINT = "";
 
-// BẢN ĐỒ. "osm" = OpenStreetMap như mẫu: trang thử kết nối trước, lỗi thì thử lại 3 lần. "google" = mọi khách đều thấy Google Maps.
-window.CARD_MAP_PROVIDER = "osm";
-// Có mạng ở Việt Nam chặn hẳn OpenStreetMap (khách báo "connection reset" 13.11.2026) — thử lại bao nhiêu lần cũng không được.
-// true  = hết 3 lần thử thì khung hiện bản đồ Google Maps ở đúng toạ độ đó (khách không thấy trang lỗi).
-// false = hiện dòng "Chưa tải được bản đồ" + nút "Tải lại bản đồ" (nút "Chỉ đường" vẫn dùng được).
+// BẢN ĐỒ. "google" = mọi khách thấy Google Maps, ghim đúng toạ độ lat/lng của từng bên (đang dùng).
+// "osm" = OpenStreetMap như mẫu — KHÔNG nên: mạng ở Việt Nam chặn chập chờn openstreetmap.org, khách báo lỗi
+// "connection reset" 3 lần ngày 13.11.2026; đã đo bằng Chrome thật trên mạng đó, Google Maps hiện đúng còn OpenStreetMap thì lỗi.
+window.CARD_MAP_PROVIDER = "google";
+// Chỉ có tác dụng khi CARD_MAP_PROVIDER = "osm": true = OpenStreetMap không tải được thì khung chuyển sang Google Maps;
+// false = hiện dòng "Chưa tải được bản đồ" + nút "Tải lại bản đồ".
 window.CARD_MAP_FALLBACK_GOOGLE = true;
 
 // Tự cuộn trang ~66px/giây sau khi khách mở thiệp (khách chạm, lăn chuột hay bấm phím là dừng). false = tắt.
@@ -128,7 +129,7 @@ window.CARD_SIDES = {
    (13.11.2026: đã xoá Sổ lưu bút, Lịch trình và các nhành hoa ngoài phong bì đầu trang — xem script apply)
    Các phần khác nằm ở file riêng, nhúng chung vào index.html theo thứ tự (JS_FILES trong
    .apply-client-photos-and-remove-credit.py): _card-data-nha-trai-nha-gai.js (dữ liệu 2 bên) → file này →
-   _map-openstreetmap-retry.js (bản đồ + tự tải lại) → _side-switch.js (nút Nhà trai / Nhà gái) → _rsvp-popup.js
+   _map-google-or-openstreetmap.js (bản đồ) → _side-switch.js (nút Nhà trai / Nhà gái) → _rsvp-popup.js
    (xác nhận tham dự) → _popup-tuning.js → _scroll-effects.js
    ========================================================================= */
 (function () {
@@ -689,29 +690,29 @@ window.CARD_SIDES = {
 })();
 
 /* =========================================================================
-   Bản đồ OpenStreetMap nhúng (như mẫu) + thử lại khi không tải được + dự phòng Google Maps khi bị chặn.
+   Bản đồ trong mục Địa điểm. MẶC ĐỊNH: Google Maps nhúng (không cần khoá API), ghim đúng toạ độ venue.lat / venue.lng.
 
-   Vì sao cần: có mạng ở Việt Nam chặn hẳn tên miền *.openstreetmap.org (đo 13.11.2026 trên máy người làm thiệp: kết nối bị
-   ngắt ngay lúc bắt tay TLS, các trang khác vẫn vào bình thường). Khi đó khung bản đồ hiện trang lỗi "connection reset" của
-   trình duyệt, tải lại bao nhiêu lần cũng vậy — khách báo lỗi này 2 lần trong ngày 13.11.2026.
+   Vì sao không dùng OpenStreetMap như bản build cũ: trên mạng của người làm thiệp (và nhiều khả năng của khách ở Việt Nam)
+   tên miền *.openstreetmap.org bị chặn chập chờn theo từng kết nối — lúc trang bản đồ bị ngắt ("connection reset"), lúc trang
+   vào được nhưng ảnh bản đồ bị ngắt. Khách báo lỗi 3 lần ngày 13.11.2026; đã thử "tải lại vài lần" rồi "thử kết nối trước,
+   lỗi thì đổi sang Google" nhưng vì chặn chập chờn nên vẫn có lúc lọt lỗi. Đo bằng Chrome thật trên mạng đó: cả 3 kiểu
+   nhúng Google Maps đều hiện đúng, khung OpenStreetMap thì hiện trang lỗi.
 
-   Cách làm (bắt đầu khi khung bản đồ còn cách màn hình ≤ 600px):
-   1. THỬ KẾT NỐI TRƯỚC, chưa đụng tới khung: tải 2 ảnh nhỏ — biểu tượng của www.openstreetmap.org (máy chủ phát trang bản đồ)
-      và 1 ô bản đồ quanh điểm ghim từ tile.openstreetmap.org (máy chủ ảnh bản đồ). Nhờ vậy khách không bao giờ nhìn thấy
-      trang lỗi của trình duyệt nằm trong khung.
-   2. Cả 2 ảnh tải được → đặt bản đồ OpenStreetMap vào khung. Quá 15 giây khung chưa tải xong thì coi như lỗi.
-   3. Lỗi → thử lại sau 0,7 giây, 1,4 giây, 2,1 giây (3 lần).
-   4. Vẫn lỗi → CARD_MAP_FALLBACK_GOOGLE = true (mặc định): khung hiện bản đồ Google Maps ở đúng toạ độ đó.
-                 CARD_MAP_FALLBACK_GOOGLE = false: hiện dòng "Chưa tải được bản đồ" + nút "Tải lại bản đồ".
-   CARD_MAP_PROVIDER = "google" (file _card-data-…): bỏ qua OpenStreetMap, mọi khách đều thấy Google Maps.
+   CARD_MAP_PROVIDER (file _card-data-…):
+   · "google" (mặc định, đang dùng): khung hiện Google Maps, không gửi yêu cầu nào tới OpenStreetMap.
+   · "osm": OpenStreetMap như mẫu, theo cách cũ — chỉ nên dùng khi chắc khách không ở mạng chặn:
+       1. thử kết nối trước bằng 2 ảnh nhỏ (biểu tượng www.openstreetmap.org + 1 ô bản đồ quanh điểm ghim), chưa đụng tới khung;
+       2. được → đặt bản đồ OpenStreetMap vào khung (quá 15 giây chưa xong coi như lỗi); lỗi → thử lại sau 0,7 / 1,4 / 2,1 giây;
+       3. vẫn lỗi → CARD_MAP_FALLBACK_GOOGLE = true: hiện Google Maps; = false: dòng "Chưa tải được bản đồ" + nút "Tải lại bản đồ".
+   Bản đồ chỉ bắt đầu tải khi khung còn cách màn hình ≤ 600px.
 
    Dùng: window.__CardMap.show(iframe, { lat, lng })  — _side-switch.js gọi mỗi khi đổi bên.
          window.__CardMap.load()                       — chạy ngay, không chờ khung vào màn hình.
    ========================================================================= */
 (function () {
   "use strict";
-  var MAX_RETRY = 3;         // số lần thử lại
-  var RETRY_STEP_MS = 700;   // lần 1 chờ 0,7s, lần 2 chờ 1,4s, lần 3 chờ 2,1s
+  var MAX_RETRY = 3;             // (chế độ "osm") số lần thử lại
+  var RETRY_STEP_MS = 700;       // lần 1 chờ 0,7s, lần 2 chờ 1,4s, lần 3 chờ 2,1s
   var PROBE_TIMEOUT_MS = 6000;   // ảnh thử quá ngần này chưa về thì coi là lỗi
   var FRAME_TIMEOUT_MS = 15000;  // khung bản đồ quá ngần này chưa tải xong thì coi là lỗi
   var NEAR_MARGIN = "600px";
@@ -723,19 +724,19 @@ window.CARD_SIDES = {
   var near = false, watching = false;
   var showing = "";     // "", "osm", "google"
 
-  // Khung nhìn ±0.00605° kinh độ, ±0.005° vĩ độ quanh điểm ghim — bằng mức thu phóng của mẫu
+  // Google Maps nhúng kiểu không khoá API: ghim tại toạ độ, thu phóng 16 (ngang mức của mẫu), giao diện tiếng Việt
+  function googleSrc(v) {
+    return "https://www.google.com/maps?q=" + v.lat + "," + v.lng + "&z=16&hl=vi&output=embed";
+  }
+  // OpenStreetMap nhúng: khung nhìn ±0.00605° kinh độ, ±0.005° vĩ độ quanh điểm ghim — bằng mức thu phóng của mẫu
   function osmSrc(v) {
     var dx = 0.00605, dy = 0.005;
     return "https://www.openstreetmap.org/export/embed.html?bbox=" +
       [(v.lng - dx).toFixed(4), (v.lat - dy).toFixed(4), (v.lng + dx).toFixed(4), (v.lat + dy).toFixed(4)].join("%2C") +
       "&layer=mapnik&marker=" + v.lat + "%2C" + v.lng;
   }
-  function googleSrc(v) {
-    return "https://www.google.com/maps?q=" + v.lat + "," + v.lng + "&z=16&hl=vi&output=embed";
-  }
-
-  // 1 ô bản đồ ngẫu nhiên ở mức thu phóng 17 hoặc 18 quanh điểm ghim. Khung nhúng chỉ tải ô mức 16, nên ô thử hầu như chưa
-  // nằm trong bộ nhớ đệm của trình duyệt — lấy đúng ô khung đã tải thì lúc mạng bị chặn ảnh vẫn "tải được" từ bộ nhớ đệm.
+  // (chế độ "osm") 1 ô bản đồ ngẫu nhiên ở mức thu phóng 17 hoặc 18 quanh điểm ghim — khung nhúng chỉ tải ô mức 16 nên ô thử
+  // hầu như chưa nằm trong bộ nhớ đệm; lấy đúng ô khung đã tải thì lúc bị chặn ảnh vẫn "tải được" từ bộ nhớ đệm
   function tileUrl(v) {
     var z = Math.random() < 0.5 ? 17 : 18, n = Math.pow(2, z), rad = v.lat * Math.PI / 180;
     var x = Math.floor((v.lng + 180) / 360 * n) + Math.floor(Math.random() * 3) - 1;
@@ -767,7 +768,7 @@ window.CARD_SIDES = {
     frame.insertAdjacentElement("afterend", note);
   }
 
-  function giveUp() { // hết lượt thử lại
+  function giveUp() { // (chế độ "osm") hết lượt thử lại
     if (window.CARD_MAP_FALLBACK_GOOGLE !== false) return setFrame(googleSrc(place), "google");
     ensureNote();
     if (note) note.hidden = false;
@@ -788,7 +789,8 @@ window.CARD_SIDES = {
     clearTimeout(retryTimer);
     if (note) note.hidden = true;
 
-    if (window.CARD_MAP_PROVIDER === "google") return setFrame(googleSrc(place), "google");
+    // Mặc định: Google Maps. Chỉ đi đường OpenStreetMap khi file dữ liệu ghi rõ CARD_MAP_PROVIDER = "osm".
+    if (window.CARD_MAP_PROVIDER !== "osm") { attempt = 0; return setFrame(googleSrc(place), "google"); }
 
     function fail() {
       if (failed || my !== token) return;
@@ -848,12 +850,11 @@ window.CARD_SIDES = {
   }
 
   window.__CardMap = {
-    src: osmSrc,
     show: function (iframe, v) {
       var same = place && v && place.lat === v.lat && place.lng === v.lng && frame === iframe;
       frame = iframe;
       place = v;
-      // nền nhạt giữ chỗ trong lúc đang thử kết nối (khung chưa có bản đồ) để chỗ đó không trống trơn
+      // nền nhạt giữ chỗ trong lúc khung chưa có bản đồ để chỗ đó không trống trơn
       if (!iframe.style.backgroundColor) iframe.style.backgroundColor = "rgba(81, 20, 25, 0.06)";
       if (same) return;
       attempt = 0;
@@ -996,7 +997,7 @@ window.CARD_SIDES = {
       "&location=" + encodeURIComponent(where);
   }
 
-  // Bản đồ: OpenStreetMap nhúng theo venue.lat / venue.lng, có tự tải lại khi lỗi — xem _map-openstreetmap-retry.js
+  // Bản đồ nhúng theo venue.lat / venue.lng (mặc định Google Maps) — xem _map-google-or-openstreetmap.js
   function directionsHref(v) {
     return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(v.directionsTo || v.address);
   }
